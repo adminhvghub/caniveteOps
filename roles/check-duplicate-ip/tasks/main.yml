@@ -1,29 +1,34 @@
 ---
 # roles/check-duplicate-ip/tasks/main.yml
 
-- name: "Passo 1: Obter a lista de todos os hosts ESXi do vCenter"
-  community.vmware.vmware_host_list:
+- name: "Passo 1: Obter informações de todos os Clusters do vCenter"
+  community.vmware.vmware_cluster_info:
     hostname: "{{ lookup('env', 'VMWARE_HOST') }}"
     username: "{{ lookup('env', 'VMWARE_USER') }}"
     password: "{{ lookup('env', 'VMWARE_PASSWORD') }}"
     validate_certs: no
-  register: all_hosts_result
+  register: cluster_info
   delegate_to: localhost
 
-- name: "Passo 2: Coletar Facts de rede de TODOS os hosts"
+- name: "Passo 2: Consolidar lista de todos os hosts nativamente em memória"
+  ansible.builtin.set_fact:
+    # Extrai o 'host_list' de cada cluster, junta tudo em uma lista só (flatten) e remove duplicados (unique)
+    lista_de_hosts: "{{ cluster_info.clusters.values() | map(attribute='host_list') | flatten | unique }}"
+
+- name: "Passo 3: Coletar Facts de rede de TODOS os hosts encontrados"
   community.vmware.vmware_host_facts:
     hostname: "{{ lookup('env', 'VMWARE_HOST') }}"
     username: "{{ lookup('env', 'VMWARE_USER') }}"
     password: "{{ lookup('env', 'VMWARE_PASSWORD') }}"
     validate_certs: no
     esxi_hostname: "{{ item }}"
-  loop: "{{ all_hosts_result.hosts | default([]) }}"
+  loop: "{{ lista_de_hosts }}"
   register: all_hosts_facts
   delegate_to: localhost
   ignore_errors: yes  # Evita que o playbook pare se um host estiver desligado/offline
   no_log: true        # Oculta o JSON gigante do console do AWX para não poluir a tela
 
-- name: "Passo 3: Mapear todos os IPs encontrados (Processamento Jinja2)"
+- name: "Passo 4: Mapear todos os IPs encontrados (Processamento Jinja2)"
   ansible.builtin.set_fact:
     mapeamento_ips: >-
       {%- set lista_ips = [] -%}
@@ -47,7 +52,7 @@
       {%- endfor -%}
       {{ lista_ips }}
 
-- name: "Passo 4: Agrupar IPs por endereço e detectar duplicidades"
+- name: "Passo 5: Agrupar IPs por endereço e detectar duplicidades"
   ansible.builtin.set_fact:
     ips_duplicados: >-
       {%- set contagem = {} -%}
@@ -65,7 +70,7 @@
       {%- endfor -%}
       {{ duplicados }}
 
-- name: "Passo 5: ALERTAR IPs Duplicados Encontrados!"
+- name: "Passo 6: ALERTAR IPs Duplicados Encontrados!"
   ansible.builtin.debug:
     msg: "🚨 CRÍTICO: O IP {{ item.key }} está duplicado! Sendo usado em: {{ item.value | join(' E ') }}"
   loop: "{{ ips_duplicados | dict2items }}"
@@ -73,7 +78,7 @@
   # Força a falha do playbook se houver IP duplicado (Ideal para esteiras de check/qualidade)
   failed_when: ips_duplicados | length > 0
 
-- name: "Passo 6: Sucesso - Nenhum conflito de rede encontrado"
+- name: "Passo 7: Sucesso - Nenhum conflito de rede encontrado"
   ansible.builtin.debug:
     msg: "✅ Verificação concluída com sucesso. Nenhum endereço IP de VMkernel está duplicado na sua infraestrutura."
   when: ips_duplicados | length == 0
