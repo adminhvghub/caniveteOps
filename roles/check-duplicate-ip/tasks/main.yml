@@ -17,11 +17,10 @@
     password: "{{ lookup('env', 'VMWARE_PASSWORD') }}"
     validate_certs: no
     datacenter: "{{ item.name }}"
-  # A correção está aqui: a chave correta retornada pelo módulo é datacenter_info
   loop: "{{ dc_info.datacenter_info }}"
   register: cluster_info
   delegate_to: localhost
-  no_log: false  # Oculta os logs massivos novamente
+  no_log: true
 
 - name: "Passo 3: Consolidar lista de todos os hosts em memória"
   ansible.builtin.set_fact:
@@ -30,15 +29,21 @@
       {%- for res in cluster_info.results -%}
         {%- if res.clusters is defined -%}
           {%- for c_name, c_data in res.clusters.items() -%}
-            {%- if c_data.host_list is defined -%}
-              {%- for h in c_data.host_list -%}
-                {%- set _ = hosts.append(h) -%}
+            {%- if c_data.hosts is defined -%}
+              {%- for h in c_data.hosts -%}
+                {%- if h.name is defined -%}
+                  {%- set _ = hosts.append(h.name) -%}
+                {%- endif -%}
               {%- endfor -%}
             {%- endif -%}
           {%- endfor -%}
         {%- endif -%}
       {%- endfor -%}
       {{ hosts | unique }}
+
+- name: "DEBUG: Verificar se a lista de hosts foi preenchida"
+  ansible.builtin.debug:
+    var: lista_de_hosts
 
 - name: "Passo 4: Coletar Facts de rede de TODOS os hosts encontrados"
   community.vmware.vmware_host_facts:
@@ -50,14 +55,14 @@
   loop: "{{ lista_de_hosts }}"
   register: all_hosts_facts
   delegate_to: localhost
-  ignore_errors: yes  # Evita que o playbook pare se um host estiver offline
-  no_log: false        # Oculta o JSON gigante do console do AWX
+  ignore_errors: yes
+  no_log: true
 
 - name: "Passo 5: Mapear todos os IPs encontrados (Processamento Jinja2)"
   ansible.builtin.set_fact:
     mapeamento_ips: >-
       {%- set lista_ips = [] -%}
-      {%- for host_data in all_hosts_facts.results -%}
+      {%- for host_data in all_hosts_facts.results | default([]) -%}
         {%- if host_data.ansible_facts is defined -%}
           {%- set nome_host = host_data.item -%}
           {%- set fatos = host_data.ansible_facts -%}
