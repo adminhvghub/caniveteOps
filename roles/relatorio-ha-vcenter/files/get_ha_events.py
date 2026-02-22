@@ -25,9 +25,7 @@ def main():
         si = SmartConnect(host=host, user=user, pwd=password, sslContext=context)
         atexit.register(Disconnect, si)
 
-        # Usa o relógio exato do vCenter
         vcenter_time = si.CurrentTime()
-        # Ampliamos para 48h para evitar qualquer corte por fuso horário local vs UTC
         start_time = vcenter_time - timedelta(days=2)
 
         # 1. Filtro de tempo
@@ -35,21 +33,36 @@ def main():
         time_filter.beginTime = start_time
         time_filter.endTime = vcenter_time
 
-        # 2. FILTRO NATIVO DO VCENTER (A Mágica acontece aqui)
+        # 2. Criando a especificação do filtro
         filter_spec = vim.event.EventFilterSpec()
         filter_spec.time = time_filter
-        # Obriga o vCenter a processar e devolver APENAS este tipo de evento
         filter_spec.eventTypeId = ["com.vmware.vc.ha.VmRestartedByHAEvent"]
+
+        # 3. NOVIDADE: Forçar a busca explícita a partir da raiz do vCenter
+        entity_filter = vim.event.EventFilterSpec.ByEntity()
+        entity_filter.entity = si.content.rootFolder
+        entity_filter.recursion = vim.event.EventFilterSpec.RecursionOption.all
+        filter_spec.entity = entity_filter
 
         event_manager = si.content.eventManager
         
-        # Coleta os eventos já filtrados na origem
-        events = event_manager.QueryEvents(filter_spec)
+        # 4. NOVIDADE: Usar o Collector em vez de QueryEvents
+        collector = event_manager.CreateCollectorForEvents(filter_spec)
+        
+        events = []
+        while True:
+            # Paginação: lê os eventos em blocos para não perder dados simultâneos
+            page = collector.ReadNextEvents(100)
+            if not page:
+                break
+            events.extend(page)
+            
+        # Destruir o collector para limpar a memória no vCenter
+        collector.DestroyCollector()
 
         ha_vms = []
         
         for event in events:
-            # Pega a mensagem formatada, se não existir, usa uma padrão
             msg = getattr(event, 'fullFormattedMessage', '')
             if not msg:
                 msg = "vSphere HA restarted this virtual machine"
@@ -65,7 +78,6 @@ def main():
                 "tipo_evento": "com.vmware.vc.ha.VmRestartedByHAEvent"
             })
 
-        # Imprime o resultado como JSON para o Ansible
         print(json.dumps(ha_vms))
 
     except Exception as e:
