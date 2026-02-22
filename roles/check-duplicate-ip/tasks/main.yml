@@ -104,9 +104,9 @@
   ansible.builtin.set_fact:
     # O uso do '|' (Literal Block) garante que as quebras de linha reais sejam enviadas ao Slack
     slack_msg: |
-      🚨 *ALERTA CRÍTICO: Conflito de IP (VMkernel) Detectado!* 🚨
+      🚨 *ALERTA CRÍTICO: CONFLITO IP (VMkernel) DETECTADO!* 🚨
 
-      O Canivete Suíço de Operações identificou endereços IP duplicados na infraestrutura do vCenter.
+      O caniveteOps identificou endereços IP duplicados na infraestrutura do vCenter.
       {% for ip, locais in ips_duplicados.items() %}
       
       *IP Duplicado:* `{{ ip }}`
@@ -116,7 +116,7 @@
       {% endfor %}
       {% endfor %}
 
-      _Por favor, verifique a configuração de rede desses hosts para evitar indisponibilidade de vMotion ou gerência._
+      _Por favor, verifique a configuração de rede desses hosts para evitar indisponibilidade de serviços da VMware._
   when: ips_duplicados | length > 0
 
 - name: "Passo 8: Enviar notificação para o Slack via Webhook (Nativo)"
