@@ -8,6 +8,11 @@
       ansible.builtin.include_role:
         name: relatorio-ha-vcenter
       when: canivete_action == "vcenter-ha-report"
+    
+    - name: Trazer report de Hosts
+      ansible.builtin.include_role:
+        name: check-duplicate-ip
+      when: canivete_action == "check-ip-duplicate"
 
     # Futuras ferramentas entrarão aqui abaixo seguindo a mesma lógica:
     # - name: Executar Ferramenta - Limpar Snapshots Antigos

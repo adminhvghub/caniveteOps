@@ -1,0 +1,18 @@
+---
+# roles/check-duplicate-ip/tasks/main.yml
+
+- name: Coletar informações de status do ESXi no vCenter
+  community.vmware.vmware_host_facts:
+    hostname: "{{ lookup('env', 'VMWARE_HOST') }}"
+    username: "{{ lookup('env', 'VMWARE_USER') }}"
+    password: "{{ lookup('env', 'VMWARE_PASSWORD') }}"
+    validate_certs: no
+    # Vamos fixar um host manualmente só para esse teste de mapeamento
+    esxi_hostname: "tpsp1esx3n00046.tpsp1infra.local" 
+  register: host_info
+  delegate_to: localhost
+
+- name: "DUMP: Exibir toda a arvore de rede do host para analise"
+  ansible.builtin.debug:
+    # Vamos focar apenas na parte de rede para não travar a sua tela com tanta informação
+    var: host_info.ansible_facts.vmware_host_info['tpsp1esx3n00046.tpsp1infra.local'].network
