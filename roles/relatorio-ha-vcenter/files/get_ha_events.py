@@ -28,7 +28,6 @@ def main():
         vcenter_time = si.CurrentTime()
         start_time = vcenter_time - timedelta(days=2)
 
-        # Filtro pedindo APENAS pelo tempo (todas as categorias, todos os tipos)
         time_filter = vim.event.EventFilterSpec.ByTime()
         time_filter.beginTime = start_time
         time_filter.endTime = vcenter_time
@@ -36,12 +35,26 @@ def main():
         filter_spec = vim.event.EventFilterSpec()
         filter_spec.time = time_filter
 
+        # =====================================================================
+        # SOLUÇÃO CONTRA O ERRO "ContentLibrary" E A PERDA DA TESTE-NSX6:
+        # União Cirúrgica: Pedimos os eventos clássicos de VM e os novos de HA
+        # =====================================================================
+        
+        # 1. Pega todos os eventos clássicos de VM (Seguro, não quebra o pyvmomi)
+        filter_spec.type = [vim.event.VmEvent]
+        
+        # 2. Pega os eventos modernos explicitamente (Garante a teste-nsx3)
+        filter_spec.eventTypeId = [
+            "com.vmware.vc.ha.VmRestartedByHAEvent",
+            "com.vmware.vc.ha.VmDasBeingResetEvent"
+        ]
+
         event_manager = si.content.eventManager
         collector = event_manager.CreateCollectorForEvents(filter_spec)
         
         events = []
         while True:
-            # Baixa de 500 em 500 para não estourar o limite do SOAP da VMware
+            # Paginação de 500 em 500
             page = collector.ReadNextEvents(500)
             if not page:
                 break
@@ -50,8 +63,8 @@ def main():
         collector.DestroyCollector()
 
         ha_vms = []
+        seen_vms = set() # Previne VMs duplicadas caso o vCenter registre dois logs iguais
         
-        # Filtro Fino Feito 100% no Python (Ignora os bugs de busca do vCenter)
         for event in events:
             msg = getattr(event, 'fullFormattedMessage', '')
             if not msg:
@@ -62,29 +75,32 @@ def main():
             
             is_ha_restart = False
             
-            # Checa todas as possibilidades de ser um evento de HA
+            # Valida todas as formas possíveis que o vCenter usa para avisar de HA
             if event_type_id == "com.vmware.vc.ha.VmRestartedByHAEvent":
                 is_ha_restart = True
             elif "VmRestartedOnAlternateHostEvent" in event_type_name:
                 is_ha_restart = True
             elif "VmDasBeingResetEvent" in event_type_name:
                 is_ha_restart = True
-            elif "vSphere HA restarted virtual machine" in msg:
+            elif "vSphere HA restarted" in msg:
                 is_ha_restart = True
                 
-            # Se for HA, garante que temos a VM afetada
             if is_ha_restart:
                 if getattr(event, 'vm', None) and event.vm is not None:
                     vm_name = event.vm.name
                     
-                    ha_vms.append({
-                        "vm_name": vm_name,
-                        "data_evento": event.createdTime.strftime("%Y-%m-%d %H:%M:%S UTC"),
-                        "mensagem": msg,
-                        "tipo_evento": event_type_id if event_type_id else event_type_name
-                    })
+                    # Cria uma chave única por VM no mesmo minuto para evitar duplicidade
+                    event_key = f"{vm_name}_{event.createdTime.strftime('%Y%m%d%H%M')}"
+                    
+                    if event_key not in seen_vms:
+                        seen_vms.add(event_key)
+                        ha_vms.append({
+                            "vm_name": vm_name,
+                            "data_evento": event.createdTime.strftime("%Y-%m-%d %H:%M:%S UTC"),
+                            "mensagem": msg if msg else "vSphere HA restarted this virtual machine",
+                            "tipo_evento": event_type_id if event_type_id else event_type_name
+                        })
 
-        # Retorna a lista final para o Ansible
         print(json.dumps(ha_vms))
 
     except Exception as e:
