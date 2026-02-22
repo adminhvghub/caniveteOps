@@ -18,6 +18,7 @@ def main():
         sys.exit(1)
 
     try:
+        # Ignora avisos de certificado (padrão em automação VMware)
         context = ssl.create_default_context()
         context.check_hostname = False
         context.verify_mode = ssl.CERT_NONE
@@ -25,32 +26,28 @@ def main():
         si = SmartConnect(host=host, user=user, pwd=password, sslContext=context)
         atexit.register(Disconnect, si)
 
-        # Mesma lógica temporal: Get-Date e AddDays(-1)
+        # 1. Lógica PowerCLI: -Start (Get-Date).AddDays(-1)
         vcenter_time = si.CurrentTime()
         start_time = vcenter_time - timedelta(days=1)
 
         time_filter = vim.event.EventFilterSpec.ByTime()
         time_filter.beginTime = start_time
-        time_filter.endTime = vcenter_time
 
         filter_spec = vim.event.EventFilterSpec()
         filter_spec.time = time_filter
         
-        # 1. EVITA O "ContentLibrary" KEYERROR
-        # Em vez de pedir tudo, pedimos apenas eventos relacionados a VMs e eventos "estendidos"
-        # O EventEx engloba o "com.vmware.vc.ha.VmRestartedByHAEvent"
-        filter_spec.type = [vim.event.VmEvent, vim.event.EventEx]
-
-        # 2. EVITA BUSCA LENTA (Como o PowerCLI -Type Warning)
-        # Trazemos apenas eventos de Alerta e Erro
-        filter_spec.category = ["warning", "error"]
+        # 2. Lógica PowerCLI: -Type Warning
+        # Ao pedir APENAS "warning", o vCenter não nos envia os eventos de "ContentLibrary" (que são "info")
+        # Isso resolve o bug da biblioteca pyvmomi nativamente.
+        filter_spec.category = ["warning"]
 
         event_manager = si.content.eventManager
+        
+        # O Collector é o equivalente do PowerCLI para suportar o "-MaxSamples 100000"
         collector = event_manager.CreateCollectorForEvents(filter_spec)
         
         events = []
         while True:
-            # Como filtramos pesado na origem, podemos ler em blocos maiores
             page = collector.ReadNextEvents(1000)
             if not page:
                 break
@@ -59,53 +56,33 @@ def main():
         collector.DestroyCollector()
 
         ha_vms = []
-        seen_events = set() # Controle antiduplicidade
         
         for event in events:
-            # Pega a mensagem formatada
             msg = getattr(event, 'fullFormattedMessage', '')
             if not msg:
                 continue
                 
-            event_type_name = type(event).__name__
-            event_type_id = getattr(event, 'eventTypeId', '')
-                
-            # Lógica inspirada no seu comando PowerCLI (Where {$_.FullFormattedMessage -match "restarted"})
-            # Também procuramos pelos IDs padrões de HA conhecidos.
-            is_ha = False
+            # 3. Lógica PowerCLI: Where {$_.FullFormattedMessage -match "restarted"}
+            # E garantimos que o texto tenha "vSphere HA" para não pegar reinícios manuais
             if "restarted" in msg.lower() and "vSphere HA" in msg:
-                is_ha = True
-            elif event_type_id == "com.vmware.vc.ha.VmRestartedByHAEvent":
-                is_ha = True
-            elif "VmDasBeingResetEvent" in event_type_name:
-                is_ha = True
                 
-            if is_ha:
                 vm_name = "Desconhecida"
-                # Verifica se o evento está atrelado a uma VM e pega o nome
+                # Lógica PowerCLI: Se ($evento.Vm) { $evento.Vm.Name }
                 if getattr(event, 'vm', None) and event.vm is not None:
                     vm_name = event.vm.name
                     
-                # Cria uma assinatura única para o evento (VM + Hora + Minuto + Segundo)
-                # Assim garantimos que o mesmo evento não venha duplicado
-                event_sig = f"{vm_name}_{event.createdTime.strftime('%Y%m%d%H%M%S')}"
-                
-                if event_sig not in seen_events:
-                    seen_events.add(event_sig)
-                    
-                    ha_vms.append({
-                        "vm_name": vm_name,
-                        "data_evento": event.createdTime.strftime("%Y-%m-%d %H:%M:%S UTC"),
-                        "mensagem": msg,
-                        "tipo_evento": event_type_id if event_type_id else event_type_name
-                    })
+                ha_vms.append({
+                    "vm_name": vm_name,
+                    "data_evento": event.createdTime.strftime("%Y-%m-%d %H:%M:%S UTC"),
+                    "mensagem": msg,
+                    "tipo_evento": getattr(event, 'eventTypeId', type(event).__name__)
+                })
 
-        # Retorna o array JSON limpo para o Ansible
+        # Imprime o JSON limpo para o AWX
         print(json.dumps(ha_vms))
 
     except Exception as e:
-        # Importante: se houver um KeyError não mapeado (como ContentLibrary), ele não quebra silencioso
-        print(json.dumps({"error": str(e), "type": type(e).__name__}))
+        print(json.dumps({"error": str(e)}))
         sys.exit(1)
 
 if __name__ == '__main__':
