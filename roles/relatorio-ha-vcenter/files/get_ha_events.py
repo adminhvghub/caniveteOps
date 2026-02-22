@@ -25,49 +25,55 @@ def main():
         si = SmartConnect(host=host, user=user, pwd=password, sslContext=context)
         atexit.register(Disconnect, si)
 
-        # Usa o relógio exato do vCenter para a janela de 24h
         vcenter_time = si.CurrentTime()
         start_time = vcenter_time - timedelta(days=1)
 
         event_manager = si.content.eventManager
         
-        # Filtro de tempo
         time_filter = vim.event.EventFilterSpec.ByTime()
         time_filter.beginTime = start_time
         time_filter.endTime = vcenter_time
 
         filter_spec = vim.event.EventFilterSpec(time=time_filter)
 
-        # Buscar todos os eventos no período
         events = event_manager.QueryEvents(filter_spec)
 
-        ha_vms = []
+        diagnostic_events = []
         
         for event in events:
-            # Verifica se o evento é um EventEx
-            if isinstance(event, vim.event.EventEx):
-                # Pega o ID específico do evento de HA
-                event_type_id = getattr(event, 'eventTypeId', '')
+            # Pegar a mensagem formatada (pode ser vazia)
+            msg = getattr(event, 'fullFormattedMessage', '')
+            
+            # Identificar o tipo exato da classe do evento
+            event_class = type(event).__name__
+            
+            # Se for EventEx, tem um ID específico (como aquele que você achou antes)
+            event_type_id = getattr(event, 'eventTypeId', 'N/A')
+
+            # Palavras-chave amplas para tentar capturar o restart
+            keywords = ["HA", "High Availability", "Restart", "Power On", "PowerOn", "Reset", "Failover"]
+            
+            # Verifica se alguma palavra-chave está na mensagem ou no ID do evento
+            is_relevant = any(kw.lower() in msg.lower() for kw in keywords) or \
+                          any(kw.lower() in event_type_id.lower() for kw in keywords) or \
+                          any(kw.lower() in event_class.lower() for kw in keywords)
+
+            if is_relevant:
+                vm_name = "Desconhecida"
+                if getattr(event, 'vm', None) and event.vm is not None:
+                    vm_name = event.vm.name
                 
-                # Se for o evento exato de restart por HA
-                if event_type_id == "com.vmware.vc.ha.VmRestartedByHAEvent":
-                    
-                    msg = getattr(event, 'fullFormattedMessage', 'VM Restarted by vSphere HA')
-                    
-                    vm_name = "Desconhecida"
-                    # No EventEx, a VM afetada está atrelada à propriedade 'vm' do evento
-                    if getattr(event, 'vm', None) and event.vm is not None:
-                        vm_name = event.vm.name
-                    
-                    ha_vms.append({
+                # Ignorar eventos de heartbeat de datastore para limpar a saída
+                if "heartbeat datastores" not in msg:
+                    diagnostic_events.append({
                         "vm_name": vm_name,
                         "data_evento": event.createdTime.strftime("%Y-%m-%d %H:%M:%S UTC"),
                         "mensagem": msg,
-                        "tipo_evento": event_type_id
+                        "classe_evento": event_class,
+                        "id_evento_ex": event_type_id
                     })
 
-        # Retorna o JSON para o Ansible
-        print(json.dumps(ha_vms))
+        print(json.dumps(diagnostic_events))
 
     except Exception as e:
         print(json.dumps({"error": str(e)}))
