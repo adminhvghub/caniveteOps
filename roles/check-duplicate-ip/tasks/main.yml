@@ -102,20 +102,20 @@
 
 - name: "Passo 7: Formatar a mensagem de alerta (slack_msg)"
   ansible.builtin.set_fact:
-    slack_msg: >-
+    # O uso do '|' (Literal Block) garante que as quebras de linha reais sejam enviadas ao Slack
+    slack_msg: |
       🚨 *ALERTA CRÍTICO: Conflito de IP (VMkernel) Detectado!* 🚨
-      
+
       O Canivete Suíço de Operações identificou endereços IP duplicados na infraestrutura do vCenter.
-      
       {% for ip, locais in ips_duplicados.items() %}
+      
       *IP Duplicado:* `{{ ip }}`
       *Sendo utilizado simultaneamente em:*
       {% for local in locais %}
       • {{ local }}
       {% endfor %}
-      
       {% endfor %}
-      
+
       _Por favor, verifique a configuração de rede desses hosts para evitar indisponibilidade de vMotion ou gerência._
   when: ips_duplicados | length > 0
 
