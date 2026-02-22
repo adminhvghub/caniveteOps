@@ -1,22 +1,36 @@
 ---
+# 1. Garante que a biblioteca está instalada no ambiente onde a task vai rodar
+- name: Garantir que a biblioteca pyvmomi está instalada
+  ansible.builtin.pip:
+    name: pyvmomi>=8.0.0
+    state: present
+  delegate_to: localhost
+  run_once: true
+
+# 2. Executa o script forçando o Python do Ansible E passando as variáveis de ambiente
 - name: Extrair eventos de HA do vCenter via pyVmomi
-  ansible.builtin.script:
-    cmd: get_ha_events.py
-  register: script_output
+  ansible.builtin.script: get_ha_events.py
+  args:
+    executable: "{{ ansible_playbook_python }}"
   environment:
     VMWARE_HOST: "{{ lookup('env', 'VMWARE_HOST') }}"
     VMWARE_USER: "{{ lookup('env', 'VMWARE_USER') }}"
     VMWARE_PASSWORD: "{{ lookup('env', 'VMWARE_PASSWORD') }}"
+  register: script_output
+  delegate_to: localhost
 
+# 3. Converter a saída do script para JSON
 - name: Converter saida do script para JSON
   ansible.builtin.set_fact:
     vms_ha_json: "{{ script_output.stdout | from_json }}"
 
+# 4. Verificar se o script retornou algum erro tratado dentro do JSON
 - name: Verificar se houve erros na coleta
   ansible.builtin.fail:
     msg: "Erro ao coletar eventos de HA: {{ vms_ha_json.error }}"
   when: vms_ha_json.error is defined
 
+# 5. Exibir os resultados (se houver VMs)
 - name: Exibir lista de VMs que sofreram HA
   ansible.builtin.debug:
     msg: 
@@ -27,11 +41,8 @@
   loop: "{{ vms_ha_json }}"
   when: vms_ha_json | length > 0
 
+# 6. Mensagem caso a lista venha vazia
 - name: Notificar que nenhuma VM sofreu HA recentemente
   ansible.builtin.debug:
     msg: "Nenhum evento de High Availability (HA) foi encontrado no vCenter."
   when: vms_ha_json | length == 0
-
-# (Opcional) Aqui você poderia incluir uma task usando o módulo ansible.builtin.uri 
-# para enviar o conteúdo da variável 'vms_ha_json' para o Slack, 
-# aproveitando a variável SLACK_WEBHOOK_URL que você já configurou no AWX!
