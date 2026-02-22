@@ -17,10 +17,11 @@
     password: "{{ lookup('env', 'VMWARE_PASSWORD') }}"
     validate_certs: no
     datacenter: "{{ item.name }}"
-  loop: "{{ dc_info.datacenters }}"
+  # A correção está aqui: a chave correta retornada pelo módulo é datacenter_info
+  loop: "{{ dc_info.datacenter_info }}"
   register: cluster_info
   delegate_to: localhost
-  no_log: false  # Oculta logs massivos do console
+  no_log: true  # Oculta os logs massivos novamente
 
 - name: "Passo 3: Consolidar lista de todos os hosts em memória"
   ansible.builtin.set_fact:
