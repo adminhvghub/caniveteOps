@@ -18,6 +18,7 @@ def main():
         sys.exit(1)
 
     try:
+        # Ignora avisos de certificado
         context = ssl.create_default_context()
         context.check_hostname = False
         context.verify_mode = ssl.CERT_NONE
@@ -25,7 +26,7 @@ def main():
         si = SmartConnect(host=host, user=user, pwd=password, sslContext=context)
         atexit.register(Disconnect, si)
 
-        # Mesma lógica do PowerCLI: Get-Date e AddDays(-1)
+        # Equivalente ao (Get-Date).AddDays(-1)
         vcenter_time = si.CurrentTime()
         start_time = vcenter_time - timedelta(days=1)
 
@@ -33,17 +34,21 @@ def main():
         time_filter.beginTime = start_time
         time_filter.endTime = vcenter_time
 
+        # Montando o filtro baseado no aprendizado do artigo e do PowerCLI
         filter_spec = vim.event.EventFilterSpec()
         filter_spec.time = time_filter
-        # Simula o '-Type Warning' do PowerCLI
-        filter_spec.type = [vim.event.WarningEvent]
+        
+        # AQUI ESTÁ A CHAVE: Isso equivale ao '-Type Warning' do PowerCLI
+        filter_spec.category = ["warning"]
 
+        # Usando o Collector corretamente
         event_manager = si.content.eventManager
         collector = event_manager.CreateCollectorForEvents(filter_spec)
         
         events = []
         while True:
-            page = collector.ReadNextEvents(1000) # Equivalente ao -MaxSamples
+            # Paginação (Equivalente ao -MaxSamples)
+            page = collector.ReadNextEvents(1000)
             if not page:
                 break
             events.extend(page)
@@ -52,14 +57,14 @@ def main():
 
         ha_vms = []
         
+        # Iterando e filtrando as mensagens
         for event in events:
-            # Pega a mensagem formatada
             msg = getattr(event, 'fullFormattedMessage', '')
             if not msg:
                 continue
                 
-            # Lógica exata do seu comando PowerCLI: Where {$_.FullFormattedMessage -match "restarted"}
-            if "restarted" in msg.lower() and "vSphere HA" in msg:
+            # AQUI ESTÁ A CHAVE 2: Equivalente ao Where {$_.FullFormattedMessage -match "restarted"}
+            if "restarted" in msg.lower() and "vsphere ha" in msg.lower():
                 
                 vm_name = "Desconhecida"
                 if getattr(event, 'vm', None) and event.vm is not None:
@@ -69,10 +74,10 @@ def main():
                     "vm_name": vm_name,
                     "data_evento": event.createdTime.strftime("%Y-%m-%d %H:%M:%S UTC"),
                     "mensagem": msg,
-                    "tipo_evento": type(event).__name__
+                    "tipo_evento": getattr(event, 'eventTypeId', type(event).__name__)
                 })
 
-        # Retorna o array JSON para o Ansible
+        # Retorna o resultado json para o Ansible
         print(json.dumps(ha_vms))
 
     except Exception as e:
