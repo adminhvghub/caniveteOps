@@ -25,79 +25,54 @@ def main():
         si = SmartConnect(host=host, user=user, pwd=password, sslContext=context)
         atexit.register(Disconnect, si)
 
+        # Mesma lógica do PowerCLI: Get-Date e AddDays(-1)
         vcenter_time = si.CurrentTime()
-        start_time = vcenter_time - timedelta(days=2)
+        start_time = vcenter_time - timedelta(days=1)
 
         time_filter = vim.event.EventFilterSpec.ByTime()
         time_filter.beginTime = start_time
         time_filter.endTime = vcenter_time
 
-        event_manager = si.content.eventManager
+        filter_spec = vim.event.EventFilterSpec()
+        filter_spec.time = time_filter
+        # Simula o '-Type Warning' do PowerCLI
+        filter_spec.type = [vim.event.WarningEvent]
 
-        # 1. Pega todos os Clusters do vCenter
-        container = si.content.viewManager.CreateContainerView(
-            si.content.rootFolder,
-            [vim.ClusterComputeResource],
-            True
-        )
-        clusters = container.view
+        event_manager = si.content.eventManager
+        collector = event_manager.CreateCollectorForEvents(filter_spec)
+        
+        events = []
+        while True:
+            page = collector.ReadNextEvents(1000) # Equivalente ao -MaxSamples
+            if not page:
+                break
+            events.extend(page)
+            
+        collector.DestroyCollector()
 
         ha_vms = []
-        seen_events = set() # Evita VMs duplicadas através do ID único do evento
-
-        # IDs exatos de eventos de HA
-        ha_event_types = [
-            "com.vmware.vc.ha.VmRestartedByHAEvent",
-            "com.vmware.vc.ha.VmDasBeingResetEvent"
-        ]
-
-        # 2. Faz a busca separada, Cluster por Cluster (Dribla a omissão do vCenter)
-        for cluster in clusters:
-            filter_spec = vim.event.EventFilterSpec()
-            filter_spec.time = time_filter
-            filter_spec.eventTypeId = ha_event_types
-            
-            # Trava a busca especificamente neste cluster
-            entity_filter = vim.event.EventFilterSpec.ByEntity()
-            entity_filter.entity = cluster
-            entity_filter.recursion = vim.event.EventFilterSpec.RecursionOption.all
-            filter_spec.entity = entity_filter
-
-            # Coletor local do cluster
-            collector = event_manager.CreateCollectorForEvents(filter_spec)
-            
-            events = []
-            while True:
-                page = collector.ReadNextEvents(500)
-                if not page:
-                    break
-                events.extend(page)
+        
+        for event in events:
+            # Pega a mensagem formatada
+            msg = getattr(event, 'fullFormattedMessage', '')
+            if not msg:
+                continue
                 
-            collector.DestroyCollector()
-
-            # 3. Processa os eventos encontrados neste cluster
-            for event in events:
+            # Lógica exata do seu comando PowerCLI: Where {$_.FullFormattedMessage -match "restarted"}
+            if "restarted" in msg.lower() and "vSphere HA" in msg:
+                
+                vm_name = "Desconhecida"
                 if getattr(event, 'vm', None) and event.vm is not None:
                     vm_name = event.vm.name
-                    event_id = event.key # A chave primária do banco de dados do vCenter
                     
-                    if event_id not in seen_events:
-                        seen_events.add(event_id)
-                        
-                        msg = getattr(event, 'fullFormattedMessage', '')
-                        if not msg:
-                            msg = "vSphere HA restarted this virtual machine"
-                            
-                        ha_vms.append({
-                            "vm_name": vm_name,
-                            "data_evento": event.createdTime.strftime("%Y-%m-%d %H:%M:%S UTC"),
-                            "mensagem": msg,
-                            "tipo_evento": getattr(event, 'eventTypeId', 'HA_Event')
-                        })
+                ha_vms.append({
+                    "vm_name": vm_name,
+                    "data_evento": event.createdTime.strftime("%Y-%m-%d %H:%M:%S UTC"),
+                    "mensagem": msg,
+                    "tipo_evento": type(event).__name__
+                })
 
-        container.Destroy()
-        
-        # Devolve a lista completa e limpa para o Ansible
+        # Retorna o array JSON para o Ansible
         print(json.dumps(ha_vms))
 
     except Exception as e:

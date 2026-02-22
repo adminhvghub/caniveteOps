@@ -1,33 +1,57 @@
-- name: Extrair eventos de HA do vCenter via PowerCLI
-  ansible.builtin.script:
-    cmd: get_ha_events.ps1
-    executable: pwsh
+---
+# 1. Garante que a biblioteca oficial da VMware está instalada no Python do Ansible
+- name: Garantir que a biblioteca pyvmomi está instalada
+  ansible.builtin.pip:
+    name: pyvmomi>=8.0.0
+    state: present
+  delegate_to: localhost
+  run_once: true
+
+# 2. Executa o script Python forçando o uso do interpretador interno do Ansible
+- name: Extrair eventos de HA do vCenter via pyVmomi
+  ansible.builtin.script: get_ha_events.py
+  args:
+    executable: "{{ ansible_playbook_python }}"
   register: script_output
+  delegate_to: localhost
   environment:
     VMWARE_HOST: "{{ lookup('env', 'VMWARE_HOST') }}"
     VMWARE_USER: "{{ lookup('env', 'VMWARE_USER') }}"
     VMWARE_PASSWORD: "{{ lookup('env', 'VMWARE_PASSWORD') }}"
 
+# 3. Converte a saída de texto (stdout) do Python para um objeto JSON (Lista/Dicionário)
 - name: Converter saida do script para JSON
   ansible.builtin.set_fact:
     vms_ha_json: "{{ script_output.stdout | from_json }}"
 
+# 4. Trava de segurança: Se o Python retornou um erro (como falha de login), o Ansible falha graciosamente
 - name: Verificar se houve erros na coleta
   ansible.builtin.fail:
     msg: "Erro ao coletar eventos de HA: {{ vms_ha_json.error }}"
-  when: vms_ha_json is mapping and vms_ha_json.error is defined
+  when: 
+    - vms_ha_json is mapping 
+    - vms_ha_json.error is defined
 
+# 5. Exibe as VMs que sofreram HA (Itera sobre a lista JSON)
 - name: Exibir lista de VMs que sofreram HA
   ansible.builtin.debug:
     msg: 
       - "VM: {{ item.vm_name }}"
       - "Data do Evento: {{ item.data_evento }}"
       - "Detalhe: {{ item.mensagem }}"
+      - "Tipo: {{ item.tipo_evento }}"
       - "----------------------------------------"
   loop: "{{ vms_ha_json }}"
-  when: vms_ha_json is iterable and (vms_ha_json | type_debug == 'list') and vms_ha_json | length > 0
+  when: 
+    - vms_ha_json is sequence
+    - vms_ha_json | length > 0
+  loop_control:
+    label: "{{ item.vm_name }}" # Deixa o log do AWX mais limpo, mostrando apenas o nome da VM na iteração
 
+# 6. Mensagem caso a lista venha vazia
 - name: Notificar que nenhuma VM sofreu HA recentemente
   ansible.builtin.debug:
-    msg: "Nenhum evento de High Availability (HA) foi encontrado no vCenter."
-  when: vms_ha_json is iterable and (vms_ha_json | type_debug == 'list') and vms_ha_json | length == 0
+    msg: "Nenhum evento de High Availability (HA) foi encontrado no vCenter nas ultimas 24 horas."
+  when: 
+    - vms_ha_json is sequence
+    - vms_ha_json | length == 0
