@@ -20,7 +20,7 @@
   loop: "{{ dc_info.datacenters }}"
   register: cluster_info
   delegate_to: localhost
-  no_log: true  # Oculta logs massivos do console
+  no_log: false  # Oculta logs massivos do console
 
 - name: "Passo 3: Consolidar lista de todos os hosts em memória"
   ansible.builtin.set_fact:
