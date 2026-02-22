@@ -100,9 +100,9 @@
       {%- endfor -%}
       {{ duplicados }}
 
-- name: "Passo 7: Formatar a mensagem de alerta para o Slack"
+- name: "Passo 7: Formatar a mensagem de alerta (slack_msg)"
   ansible.builtin.set_fact:
-    mensagem_alerta_slack: >-
+    slack_msg: >-
       🚨 *ALERTA CRÍTICO: Conflito de IP (VMkernel) Detectado!* 🚨
       
       O Canivete Suíço de Operações identificou endereços IP duplicados na infraestrutura do vCenter.
@@ -119,20 +119,22 @@
       _Por favor, verifique a configuração de rede desses hosts para evitar indisponibilidade de vMotion ou gerência._
   when: ips_duplicados | length > 0
 
-- name: "Passo 8: Enviar Notificação para o Slack"
-  community.general.slack:
-    # Insira aqui a URL do seu Webhook ou o Token do Slack
-    token: "{{ lookup('env', 'SLACK_WEBHOOK_URL') }}" 
-    color: "danger"
-    msg: "{{ mensagem_alerta_slack }}"
-    username: "Canivete Ops (vCenter)"
-    icon_emoji: ":rotating_light:"
-  when: ips_duplicados | length > 0
+- name: "Passo 8: Enviar notificação para o Slack via Webhook (Nativo)"
+  ansible.builtin.uri:
+    # Se você já tiver a variável slack_webhook_url declarada no AWX, ele usará ela.
+    # Caso não tenha, ele tentará puxar a env var SLACK_WEBHOOK_URL como fallback.
+    url: "{{ slack_webhook_url | default(lookup('env', 'SLACK_WEBHOOK_URL')) }}"
+    method: POST
+    body_format: json
+    body:
+      text: "{{ slack_msg }}"
   delegate_to: localhost
-  # ignore_errors garante que o playbook continue para dar a falha final mesmo se o Slack oscilar
-  ignore_errors: yes 
+  ignore_errors: yes
+  when: 
+    - ips_duplicados | length > 0
+    - slack_webhook_url is defined or lookup('env', 'SLACK_WEBHOOK_URL') != ''
 
-- name: "Passo 9: Forçar Falha do Playbook (Hard Stop para Auditoria)"
+- name: "Passo 9: Forçar Falha do Playbook (Hard Stop para Auditoria AWX)"
   ansible.builtin.debug:
     msg: "CRÍTICO: O IP {{ item.key }} está duplicado! Sendo usado em: {{ item.value | join(' E ') }}"
   loop: "{{ ips_duplicados | dict2items }}"
