@@ -18,57 +18,55 @@ def main():
         sys.exit(1)
 
     try:
-        # Ignora erros de certificado SSL (útil para labs/PoC)
         context = ssl.create_default_context()
         context.check_hostname = False
         context.verify_mode = ssl.CERT_NONE
 
-        # Conecta ao vCenter
         si = SmartConnect(host=host, user=user, pwd=password, sslContext=context)
         atexit.register(Disconnect, si)
 
-        # Usa o relógio exato do vCenter para evitar bugs de Timezone
+        # Usa o relógio exato do vCenter para a janela de 24h
         vcenter_time = si.CurrentTime()
-        start_time = vcenter_time - timedelta(days=1) # Janela de 24 horas
+        start_time = vcenter_time - timedelta(days=1)
 
         event_manager = si.content.eventManager
         
-        # Cria o filtro de tempo
+        # Filtro de tempo
         time_filter = vim.event.EventFilterSpec.ByTime()
         time_filter.beginTime = start_time
         time_filter.endTime = vcenter_time
 
         filter_spec = vim.event.EventFilterSpec(time=time_filter)
 
-        # Coleta os eventos
+        # Buscar todos os eventos no período
         events = event_manager.QueryEvents(filter_spec)
 
         ha_vms = []
         
         for event in events:
-            msg = getattr(event, 'fullFormattedMessage', '')
-            event_type = type(event).__name__
-            
-            # Filtro para encontrar os eventos de HA (DAS)
-            is_ha_event = False
-            if msg and ("vSphere HA" in msg or "High Availability" in msg):
-                is_ha_event = True
-            elif "Das" in event_type or "HAEvent" in event_type:
-                is_ha_event = True
-
-            if is_ha_event:
-                vm_name = "Desconhecida"
-                if getattr(event, 'vm', None) and event.vm is not None:
-                    vm_name = event.vm.name
+            # Verifica se o evento é um EventEx
+            if isinstance(event, vim.event.EventEx):
+                # Pega o ID específico do evento de HA
+                event_type_id = getattr(event, 'eventTypeId', '')
                 
-                ha_vms.append({
-                    "vm_name": vm_name,
-                    "data_evento": event.createdTime.strftime("%Y-%m-%d %H:%M:%S UTC"),
-                    "mensagem": msg,
-                    "tipo_evento": event_type
-                })
+                # Se for o evento exato de restart por HA
+                if event_type_id == "com.vmware.vc.ha.VmRestartedByHAEvent":
+                    
+                    msg = getattr(event, 'fullFormattedMessage', 'VM Restarted by vSphere HA')
+                    
+                    vm_name = "Desconhecida"
+                    # No EventEx, a VM afetada está atrelada à propriedade 'vm' do evento
+                    if getattr(event, 'vm', None) and event.vm is not None:
+                        vm_name = event.vm.name
+                    
+                    ha_vms.append({
+                        "vm_name": vm_name,
+                        "data_evento": event.createdTime.strftime("%Y-%m-%d %H:%M:%S UTC"),
+                        "mensagem": msg,
+                        "tipo_evento": event_type_id
+                    })
 
-        # Imprime o resultado como JSON para o Ansible capturar
+        # Retorna o JSON para o Ansible
         print(json.dumps(ha_vms))
 
     except Exception as e:
