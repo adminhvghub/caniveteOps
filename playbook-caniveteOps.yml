@@ -1,0 +1,16 @@
+---
+- name: Canivete Suíço de Operações (caniveteOps)
+  hosts: localhost
+  gather_facts: false
+  
+  tasks:
+    - name: Executar Ferramenta - Relatório de HA no vCenter
+      ansible.builtin.include_role:
+        name: relatorio-ha-vcenter
+      when: canivete_action == "vcenter-ha-report"
+
+    # Futuras ferramentas entrarão aqui abaixo seguindo a mesma lógica:
+    # - name: Executar Ferramenta - Limpar Snapshots Antigos
+    #   ansible.builtin.include_role:
+    #     name: limpar_snapshots
+    #   when: canivete_action == "vcenter-clean-snapshots"
