@@ -30,6 +30,18 @@
     msg: "Erro ao coletar eventos de HA: {{ vms_ha_json.error }}"
   when: vms_ha_json.error is defined
 
+- name: Exibir lista de VMs que sofreram HA (Diagnóstico)
+  ansible.builtin.debug:
+    msg: 
+      - "VM: {{ item.vm_name }}"
+      - "Data: {{ item.data_evento }}"
+      - "Classe: {{ item.classe_evento }}"
+      - "ID Evento (se EventEx): {{ item.id_evento_ex }}"
+      - "Detalhe: {{ item.mensagem }}"
+      - "----------------------------------------"
+  loop: "{{ vms_ha_json }}"
+  when: vms_ha_json | length > 0
+  
 # 5. Exibir os resultados (se houver VMs)
 - name: Exibir lista de VMs que sofreram HA
   ansible.builtin.debug:
