@@ -21,7 +21,7 @@
   loop: "{{ dc_info.datacenter_info }}"
   register: cluster_info
   delegate_to: localhost
-  no_log: true  # Oculta os logs massivos novamente
+  no_log: false  # Oculta os logs massivos novamente
 
 - name: "Passo 3: Consolidar lista de todos os hosts em memória"
   ansible.builtin.set_fact:
@@ -51,7 +51,7 @@
   register: all_hosts_facts
   delegate_to: localhost
   ignore_errors: yes  # Evita que o playbook pare se um host estiver offline
-  no_log: true        # Oculta o JSON gigante do console do AWX
+  no_log: false        # Oculta o JSON gigante do console do AWX
 
 - name: "Passo 5: Mapear todos os IPs encontrados (Processamento Jinja2)"
   ansible.builtin.set_fact:
