@@ -1,49 +1,33 @@
----
-# 1. Garante que a biblioteca está instalada no ambiente onde a task vai rodar
-- name: Garantir que a biblioteca pyvmomi está instalada
-  ansible.builtin.pip:
-    name: pyvmomi>=8.0.0
-    state: present
-  delegate_to: localhost
-  run_once: true
-
-# 2. Extrair eventos de HA do vCenter via pyVmomi
-- name: Extrair eventos de HA do vCenter via pyVmomi
+- name: Extrair eventos de HA do vCenter via PowerCLI
   ansible.builtin.script:
-    cmd: get_ha_events.py
-    executable: "{{ ansible_playbook_python }}"
+    cmd: get_ha_events.ps1
+    executable: pwsh
   register: script_output
-  delegate_to: localhost
   environment:
     VMWARE_HOST: "{{ lookup('env', 'VMWARE_HOST') }}"
     VMWARE_USER: "{{ lookup('env', 'VMWARE_USER') }}"
     VMWARE_PASSWORD: "{{ lookup('env', 'VMWARE_PASSWORD') }}"
 
-# 3. Converter saida do script para JSON
 - name: Converter saida do script para JSON
   ansible.builtin.set_fact:
     vms_ha_json: "{{ script_output.stdout | from_json }}"
 
-# 4. Verificar se houve erros na coleta
 - name: Verificar se houve erros na coleta
   ansible.builtin.fail:
     msg: "Erro ao coletar eventos de HA: {{ vms_ha_json.error }}"
   when: vms_ha_json is mapping and vms_ha_json.error is defined
 
-# 5. Exibir lista de VMs que sofreram HA
 - name: Exibir lista de VMs que sofreram HA
   ansible.builtin.debug:
     msg: 
       - "VM: {{ item.vm_name }}"
       - "Data do Evento: {{ item.data_evento }}"
       - "Detalhe: {{ item.mensagem }}"
-      - "Tipo: {{ item.tipo_evento }}"
       - "----------------------------------------"
   loop: "{{ vms_ha_json }}"
-  when: vms_ha_json | type_debug == 'list' and vms_ha_json | length > 0
+  when: vms_ha_json is iterable and (vms_ha_json | type_debug == 'list') and vms_ha_json | length > 0
 
-# 6. Notificar que nenhuma VM sofreu HA recentemente
 - name: Notificar que nenhuma VM sofreu HA recentemente
   ansible.builtin.debug:
-    msg: "Nenhum evento de High Availability (HA) foi encontrado no vCenter nas últimas 48h."
-  when: vms_ha_json | type_debug == 'list' and vms_ha_json | length == 0
+    msg: "Nenhum evento de High Availability (HA) foi encontrado no vCenter."
+  when: vms_ha_json is iterable and (vms_ha_json | type_debug == 'list') and vms_ha_json | length == 0
