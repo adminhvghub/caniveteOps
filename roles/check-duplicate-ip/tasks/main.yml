@@ -100,14 +100,46 @@
       {%- endfor -%}
       {{ duplicados }}
 
-- name: "Passo 7: ALERTAR IPs Duplicados Encontrados!"
+- name: "Passo 7: Formatar a mensagem de alerta para o Slack"
+  ansible.builtin.set_fact:
+    mensagem_alerta_slack: >-
+      🚨 *ALERTA CRÍTICO: Conflito de IP (VMkernel) Detectado!* 🚨
+      
+      O Canivete Suíço de Operações identificou endereços IP duplicados na infraestrutura do vCenter.
+      
+      {% for ip, locais in ips_duplicados.items() %}
+      *IP Duplicado:* `{{ ip }}`
+      *Sendo utilizado simultaneamente em:*
+      {% for local in locais %}
+      • {{ local }}
+      {% endfor %}
+      
+      {% endfor %}
+      
+      _Por favor, verifique a configuração de rede desses hosts para evitar indisponibilidade de vMotion ou gerência._
+  when: ips_duplicados | length > 0
+
+- name: "Passo 8: Enviar Notificação para o Slack"
+  community.general.slack:
+    # Insira aqui a URL do seu Webhook ou o Token do Slack
+    token: "{{ lookup('env', 'SLACK_WEBHOOK_URL') }}" 
+    color: "danger"
+    msg: "{{ mensagem_alerta_slack }}"
+    username: "Canivete Ops (vCenter)"
+    icon_emoji: ":rotating_light:"
+  when: ips_duplicados | length > 0
+  delegate_to: localhost
+  # ignore_errors garante que o playbook continue para dar a falha final mesmo se o Slack oscilar
+  ignore_errors: yes 
+
+- name: "Passo 9: Forçar Falha do Playbook (Hard Stop para Auditoria)"
   ansible.builtin.debug:
-    msg: "🚨 CRÍTICO: O IP {{ item.key }} está duplicado! Sendo usado em: {{ item.value | join(' E ') }}"
+    msg: "CRÍTICO: O IP {{ item.key }} está duplicado! Sendo usado em: {{ item.value | join(' E ') }}"
   loop: "{{ ips_duplicados | dict2items }}"
   when: ips_duplicados | length > 0
   failed_when: ips_duplicados | length > 0
 
-- name: "Passo 8: Sucesso - Nenhum conflito de rede encontrado"
+- name: "Passo 10: Sucesso - Nenhum conflito de rede encontrado"
   ansible.builtin.debug:
     msg: "✅ Verificação concluída com sucesso. Nenhum endereço IP de VMkernel está duplicado na sua infraestrutura."
   when: ips_duplicados | length == 0
