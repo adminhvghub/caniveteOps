@@ -104,7 +104,7 @@
   ansible.builtin.set_fact:
     # O uso do '|' (Literal Block) garante que as quebras de linha reais sejam enviadas ao Slack
     slack_msg: |
-      🚨 *ALERTA CRÍTICO: CONFLITO IP (VMkernel) DETECTADO!* 🚨
+      🚨 *ALERTA CRÍTICO: CONFLITO IP (vmkernel) DETECTADO!* 🚨
 
       O caniveteOps identificou endereços IP duplicados na infraestrutura do vCenter.
       {% for ip, locais in ips_duplicados.items() %}

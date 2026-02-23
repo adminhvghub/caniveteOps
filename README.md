@@ -54,6 +54,10 @@ As ferramentas foram projetadas para rodar de forma agendada (Cron) ou sob deman
 * Agrupa os milhares de IPs extraídos em memória utilizando lógica Jinja2.
 * Aciona um **Hard Stop** (`failed_when`) no AWX caso detecte o conflito, colorindo o Job de vermelho para fins de auditoria histórica.
 
+### Na Role `check-routes-dr`:
+* Acessa `networkSystem.routeTableInfo` na API interna do vCenter para ler o kernel de roteamento dos hosts ignorando completamente o protocolo SSH.
+* Valida Rede, Máscara CIDR e Gateway utilizando filtros de loop em Jinja2 contra uma matriz pré-definida de rotas obrigatórias.
+
 ---
 
 ## 🔔 Notificações e Alertas (Slack)
@@ -67,3 +71,11 @@ As roles são programadas para enviar relatórios ricos formatados em *mrkdwn* d
 > **Sendo utilizado simultaneamente em:**
 > • tpsp1esx3n00014.dominio.local (vmk2)
 > • tpsp1esx3n00044.dominio.local (vmk2)
+
+**Exemplo de rotas de DR faltantes:**
+> 🚨 **ALERTA CRÍTICO: Roteamento de DR Ausente!** 🚨
+> 
+> **Host:** `tpsp1esx3n00014.dominio.local`
+> **Rotas Ausentes:**
+> • 10.100.160.0/22 -> 10.108.148.2
+> • 172.18.144.0/22 -> 10.108.148.2

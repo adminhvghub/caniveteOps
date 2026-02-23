@@ -96,7 +96,7 @@
     slack_msg: |
       🚨 *ALERTA CRÍTICO: ROTEAMENTO DE DR AUSENTE!* 🚨
       
-      O Canivete Suíço de Operações identificou que alguns hosts ESXi perderam rotas estáticas de Disaster Recovery.
+      O caniveteOps identificou que alguns hosts ESXi perderam rotas estáticas destinadas ao vSphere Replication.
       {% for host, rotas in hosts_com_falha.items() %}
       
       *Host:* `{{ host }}`
