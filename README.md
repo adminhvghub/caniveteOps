@@ -1,4 +1,3 @@
-
 # 🇨🇭 Canivete Suíço de Operações VMware (CaniveteOps)
 
 Este repositório contém uma suíte de automações em Ansible/AWX focada na resolução proativa, auditoria e troubleshooting avançado de ambientes VMware vSphere (vCenter/ESXi). O objetivo é fornecer ferramentas cirúrgicas e confiáveis para a equipe de infraestrutura, eliminando tarefas manuais repetitivas e prevenindo incidentes silenciosos.
@@ -68,7 +67,3 @@ As roles são programadas para enviar relatórios ricos formatados em *mrkdwn* d
 > **Sendo utilizado simultaneamente em:**
 > • tpsp1esx3n00014.dominio.local (vmk2)
 > • tpsp1esx3n00044.dominio.local (vmk2)
-
-***
-
-**Dica:** Conforme formos adicionando novas roles ao nosso Canivete (ex: limpeza de snapshots órfãos, verificação de datastores lotados, etc.), basta ir adicionando pequenos blocos na seção "Ferramentas" deste README. Ficou muito profissional! O que achou?
