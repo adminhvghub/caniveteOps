@@ -1,25 +1,42 @@
 ---
 # roles/check-routes-dr/tasks/main.yml
 
-- name: "Garantir que a biblioteca pyvmomi esta instalada"
+# 1. Garante que a biblioteca está instalada no ambiente do Ansible
+- name: Garantir que a biblioteca pyvmomi esta instalada
   ansible.builtin.pip:
-    name: pyvmomi
+    name: pyvmomi>=8.0.0
     state: present
   delegate_to: localhost
+  run_once: true
 
-- name: "DUMP: Extrair tabela de roteamento de todos os hosts ESXi"
-  ansible.builtin.script: get_esxi_routes.py
-  args:
-    executable: python3
+# 2. Executa o script passando o executável do próprio Ansible e as credenciais
+- name: Extrair tabela de roteamento de todos os hosts ESXi via pyVmomi
+  ansible.builtin.script:
+    cmd: get_esxi_routes.py
+    executable: "{{ ansible_playbook_python }}"
   register: script_output
   delegate_to: localhost
+  environment:
+    VMWARE_HOST: "{{ lookup('env', 'VMWARE_HOST') }}"
+    VMWARE_USER: "{{ lookup('env', 'VMWARE_USER') }}"
+    VMWARE_PASSWORD: "{{ lookup('env', 'VMWARE_PASSWORD') }}"
 
-- name: "Converter saida do script para JSON"
+# 3. Tratamento de erro elegante (caso a API ou credencial falhe)
+- name: Verificar se houve erros na coleta do script Python
+  ansible.builtin.fail:
+    msg: "O script falhou: {{ (script_output.stdout | from_json).error }}"
+  when: 
+    - script_output.stdout is defined
+    - (script_output.stdout | from_json).error is defined
+
+# 4. Converte o resultado limpo para uma variável nativa do Ansible
+- name: Converter saida do script para JSON
   ansible.builtin.set_fact:
     tabela_rotas: "{{ script_output.stdout | from_json }}"
 
+# 5. DUMP para mapeamento das rotas
 - name: "DUMP: Exibir a tabela de roteamento de UM host para analise"
   ansible.builtin.debug:
-    # Mostraremos apenas as rotas do primeiro host da lista para não poluir sua tela
+    # Imprime as rotas do primeiro host encontrado no dicionário
     msg: "{{ tabela_rotas[tabela_rotas.keys() | first] }}"
   when: tabela_rotas.keys() | length > 0
