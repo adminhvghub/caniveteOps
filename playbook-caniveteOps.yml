@@ -14,6 +14,11 @@
         name: check-duplicate-ip
       when: canivete_action == "check-ip-duplicate"
 
+    - name: Trazer rotas de Hosts
+      ansible.builtin.include_role:
+        name: check-routes-dr
+      when: canivete_action == "check-routes-dr"
+
     # Futuras ferramentas entrarão aqui abaixo seguindo a mesma lógica:
     # - name: Executar Ferramenta - Limpar Snapshots Antigos
     #   ansible.builtin.include_role:

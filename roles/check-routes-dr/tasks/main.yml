@@ -1,0 +1,25 @@
+---
+# roles/check-routes-dr/tasks/main.yml
+
+- name: "Garantir que a biblioteca pyvmomi esta instalada"
+  ansible.builtin.pip:
+    name: pyvmomi
+    state: present
+  delegate_to: localhost
+
+- name: "DUMP: Extrair tabela de roteamento de todos os hosts ESXi"
+  ansible.builtin.script: get_esxi_routes.py
+  args:
+    executable: python3
+  register: script_output
+  delegate_to: localhost
+
+- name: "Converter saida do script para JSON"
+  ansible.builtin.set_fact:
+    tabela_rotas: "{{ script_output.stdout | from_json }}"
+
+- name: "DUMP: Exibir a tabela de roteamento de UM host para analise"
+  ansible.builtin.debug:
+    # Mostraremos apenas as rotas do primeiro host da lista para não poluir sua tela
+    msg: "{{ tabela_rotas[tabela_rotas.keys() | first] }}"
+  when: tabela_rotas.keys() | length > 0
