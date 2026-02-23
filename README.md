@@ -1,4 +1,4 @@
-# 🇨🇭 Canivete Suíço de Operações VMware (CaniveteOps)
+# CaniveteOps - Canivete Suíço de Operações
 
 Este repositório contém uma suíte de automações em Ansible/AWX focada na resolução proativa, auditoria e troubleshooting avançado de ambientes VMware vSphere (vCenter/ESXi). O objetivo é fornecer ferramentas cirúrgicas e confiáveis para a equipe de infraestrutura, eliminando tarefas manuais repetitivas e prevenindo incidentes silenciosos.
 
