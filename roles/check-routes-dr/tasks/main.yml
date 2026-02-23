@@ -94,7 +94,7 @@
 - name: Formatar a mensagem de alerta para o Slack
   ansible.builtin.set_fact:
     slack_msg: |
-      🚨 *ALERTA CRÍTICO: Roteamento de DR Ausente!* 🚨
+      🚨 *ALERTA CRÍTICO: ROTEAMENTO DE DR AUSENTE!* 🚨
       
       O Canivete Suíço de Operações identificou que alguns hosts ESXi perderam rotas estáticas de Disaster Recovery.
       {% for host, rotas in hosts_com_falha.items() %}
@@ -106,7 +106,7 @@
       {% endfor %}
       {% endfor %}
       
-      _Favor injetar as rotas faltantes via esxcli ou Host Profiles._
+      _Favor injetar as rotas faltantes via esxcli ou host profiles._
   when: hosts_com_falha | length > 0
 
 - name: "DUMP FINAL: Mostrar na tela o resultado da Auditoria"
