@@ -112,3 +112,27 @@
 - name: "DUMP FINAL: Mostrar na tela o resultado da Auditoria"
   ansible.builtin.debug:
     var: hosts_com_falha
+
+
+- name: Enviar notificação para o Slack via Webhook (Nativo)
+  ansible.builtin.uri:
+    url: "{{ slack_webhook_url | default(lookup('env', 'SLACK_WEBHOOK_URL')) }}"
+    method: POST
+    body_format: json
+    body:
+      text: "{{ slack_msg }}"
+  delegate_to: localhost
+  ignore_errors: yes
+  when: 
+    - hosts_com_falha | length > 0
+    - slack_webhook_url is defined or lookup('env', 'SLACK_WEBHOOK_URL') != ''
+
+- name: Forçar Falha do Playbook (Hard Stop para Auditoria AWX)
+  ansible.builtin.fail:
+    msg: "🚨 CRÍTICO: Encontrados hosts com rotas de DR ausentes! Verifique o log para detalhes."
+  when: hosts_com_falha | length > 0
+
+- name: Sucesso - Todas as rotas de DR validadas
+  ansible.builtin.debug:
+    msg: "✅ Verificação concluída com sucesso. Todas as rotas de DR estão configuradas em todos os hosts."
+  when: hosts_com_falha | length == 0
